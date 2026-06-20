@@ -24,7 +24,7 @@ function render() {
   const weekly = all.filter(q => q.type === 'weekly');
   const completedToday = daily.filter(q => q.completed).length;
 
-  return `
+  const result = `
     ${renderTopbar('🎯 Quests', user)}
     <div class="container">
       <div class="card stat-grid">
@@ -57,6 +57,8 @@ function render() {
     </div>
     ${renderBottomNav('quests')}
   `;
+
+  document.getElementById('app').innerHTML = result;
 }
 
 function questCard(q) {
@@ -89,7 +91,7 @@ window.completeQuest = function(questId) {
   render();
 };
 
-document.getElementById('app').innerHTML = render();
+render();
 </script>
 </body>
 </html>
