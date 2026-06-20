@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="theme-color" content="#4CAF50">
+<title>HealthQuest — Community</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="js/storage.js"></script>
+<script src="js/ui.js"></script>
+<script>
+const user = HQ.requireAuth();
+if (!user) throw new Error('not authed');
+
+function render() {
+  const rankings = HQ.getTownshipRankings();
+  const challenges = HQ.getCurrentMonthlyChallenges();
+  const posts = HQ.getPosts().slice().reverse();
+  const userTownship = user.township;
+
+  return `
+    ${renderTopbar('👥 Community', user)}
+    <div class="container">
+      <div class="tab-bar">
+        <button class="tab-btn active" data-tab="townships">🏆 Townships</button>
+        <button class="tab-btn" data-tab="challenges">⚡ Challenges</button>
+        <button class="tab-btn" data-tab="feed">💬 Feed</button>
+      </div>
+
+      <div class="tab-pane" id="pane-townships">
+        <div class="card highlight-card">
+          <h2>Your Township</h2>
+          <div class="township-name">${userTownship}</div>
+          <div class="community-points">${HQ.getCommunityPoints(user.id)} community pts</div>
+          <button class="btn-small btn-primary" onclick="contributePoints()">+10 pts to my township</button>
+        </div>
+
+        <div class="section-header"><h2>Township Leaderboard</h2></div>
+        ${rankings.map((t, i) => {
+          const isMine = t.name === userTownship;
+          const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+          return `
+            <div class="card leaderboard-row ${isMine ? 'leaderboard-mine' : ''}">
+              <div class="rank-medal">${medal}</div>
+              <div class="rank-info">
+                <div class="rank-name">${t.name} ${isMine ? '← you' : ''}</div>
+                <div class="rank-meta">${t.members} members</div>
+              </div>
+              <div class="rank-points">${t.points}</div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+
+      <div class="tab-pane" id="pane-challenges" style="display:none">
+        <div class="section-header"><h2>Monthly Challenges</h2></div>
+        ${challenges.length === 0 ? '<div class="card empty-state">No active monthly challenges.</div>' : ''}
+        ${challenges.map(c => {
+          const townships = HQ.get(HQ.KEYS.TOWNSHIPS, []);
+          const tw = townships.find(t => t.name === c.township) || { points: 0 };
+          const progress = Math.min(100, Math.round((tw.points / (c.goal || 100)) * 100));
+          return `
+            <div class="card challenge-card">
+              <div class="challenge-icon">${c.icon}</div>
+              <div class="challenge-info">
+                <div class="challenge-title">${c.title}</div>
+                <div class="challenge-desc">${c.description}</div>
+                <div class="challenge-progress">
+                  <div class="progress-bar"><div class="progress-fill" style="width:${progress}%"></div></div>
+                  <div class="progress-label">${progress}% · Reward: ${c.xp} XP, ${c.coins} 🪙</div>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+
+      <div class="tab-pane" id="pane-feed" style="display:none">
+        <div class="card">
+          <h2>Share Your Progress</h2>
+          <textarea id="post-content" placeholder="What did you achieve today?" rows="3"></textarea>
+          <button class="btn-primary" onclick="createPost()">Post</button>
+        </div>
+
+        <div class="section-header"><h2>Community Feed</h2></div>
+        ${posts.map(p => `
+          <div class="card post-card">
+            <div class="post-header">
+              <div class="post-avatar">${p.author.charAt(0)}</div>
+              <div>
+                <div class="post-author">${p.author}</div>
+                <div class="post-meta">${p.township} · ${new Date(p.createdAt).toLocaleString()}</div>
+              </div>
+            </div>
+            <div class="post-content">${p.content}</div>
+            <div class="post-actions">
+              <button class="post-action" onclick="likePost('${p.id}')">❤️ ${p.likes}</button>
+              <button class="post-action" onclick="toggleComments('${p.id}')">💬 ${p.comments.length}</button>
+            </div>
+            <div id="comments-${p.id}" class="post-comments" style="display:none">
+              ${p.comments.map(c => `<div class="comment"><strong>${c.user}:</strong> ${c.text}</div>`).join('')}
+              <div class="comment-input">
+                <input id="comment-input-${p.id}" placeholder="Add a comment...">
+                <button class="btn-small btn-primary" onclick="addComment('${p.id}')">Send</button>
+              </div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    ${renderBottomNav('community')}
+  `;
+}
+
+window.contributePoints = function() {
+  HQ.addCommunityPoints(user.id, 10);
+  HQ.addToTownship(user.township, 10);
+  alert('+10 community points added to ' + user.township + '!');
+  render();
+};
+
+window.createPost = function() {
+  const content = document.getElementById('post-content').value.trim();
+  if (!content) return;
+  HQ.addPost(user.fullName, user.township, content);
+  document.getElementById('post-content').value = '';
+  render();
+};
+
+window.likePost = function(postId) {
+  HQ.likePost(postId);
+  render();
+};
+
+window.toggleComments = function(postId) {
+  const el = document.getElementById('comments-' + postId);
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+};
+
+window.addComment = function(postId) {
+  const input = document.getElementById('comment-input-' + postId);
+  const text = input.value.trim();
+  if (!text) return;
+  HQ.addComment(postId, user.fullName, text);
+  input.value = '';
+  render();
+};
+
+document.querySelectorAll = document.querySelectorAll;
+// Tab switching
+document.addEventListener('click', function(e) {
+  if (e.target.classList.contains('tab-btn')) {
+    const tab = e.target.dataset.tab;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === e.target));
+    document.querySelectorAll('.tab-pane').forEach(p => p.style.display = p.id === 'pane-' + tab ? 'block' : 'none');
+  }
+});
+
+document.getElementById('app').innerHTML = render();
+</script>
+</body>
+</html>

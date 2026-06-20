@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="theme-color" content="#4CAF50">
+<title>HealthQuest — Quests</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="js/storage.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/quests.js"></script>
+<script>
+const user = HQ.requireAuth();
+if (!user) throw new Error('not authed');
+
+HQ.refreshQuestsForUser(user.id);
+
+function render() {
+  const all = HQ.getQuestsForUser(user.id);
+  const daily = all.filter(q => q.type === 'daily');
+  const weekly = all.filter(q => q.type === 'weekly');
+  const completedToday = daily.filter(q => q.completed).length;
+
+  return `
+    ${renderTopbar('🎯 Quests', user)}
+    <div class="container">
+      <div class="card stat-grid">
+        <div><div class="stat-value">${completedToday}/${daily.length}</div><div class="stat-label">Today</div></div>
+        <div><div class="stat-value">${user.xp}</div><div class="stat-label">XP</div></div>
+        <div><div class="stat-value">${user.coins}</div><div class="stat-label">Coins</div></div>
+        <div><div class="stat-value">${HQ.rankIcon(user.rank)}</div><div class="stat-label">${user.rank}</div></div>
+      </div>
+
+      <div class="section-header">
+        <h2>📅 Daily Quests</h2>
+        <button class="btn-secondary" onclick="HQ.regenerateQuests('${user.id}'); render();">🔄 Refresh</button>
+      </div>
+      ${daily.map(q => questCard(q)).join('')}
+
+      <div class="section-header">
+        <h2>📆 Weekly Quests</h2>
+      </div>
+      ${weekly.map(q => questCard(q)).join('') || '<div class="card empty-state">No weekly quests yet — complete more dailies to unlock!</div>'}
+
+      <div class="section-header">
+        <h2>🏆 Badges</h2>
+      </div>
+      <div class="card stat-grid">
+        ${HQ.BADGES.map(b => {
+          const earned = HQ.checkBadgeUnlocks(user).some(u => u.id === b.id);
+          return `<div class="badge-tile ${earned ? '' : 'locked'}"><div style="font-size:36px">${b.icon}</div><div class="badge-name">${b.name}</div></div>`;
+        }).join('')}
+      </div>
+    </div>
+    ${renderBottomNav('quests')}
+  `;
+}
+
+function questCard(q) {
+  if (q.completed) {
+    return `
+      <div class="card quest-card completed">
+        <div class="quest-icon">${q.icon}</div>
+        <div class="quest-body">
+          <div class="quest-title">${q.title}</div>
+          <div class="quest-meta">✅ Completed · +${q.xp} XP · +${q.coins} 🪙</div>
+        </div>
+      </div>
+    `;
+  }
+  return `
+    <div class="card quest-card">
+      <div class="quest-icon">${q.icon}</div>
+      <div class="quest-body">
+        <div class="quest-title">${q.title}</div>
+        <div class="quest-meta">Reward: +${q.xp} XP · +${q.coins} 🪙</div>
+      </div>
+      <button class="btn-primary" onclick="completeQuest('${q.id}')">Complete</button>
+    </div>
+  `;
+}
+
+window.completeQuest = function(questId) {
+  const res = HQ.completeQuest(user.id, questId);
+  if (!res.ok) { alert(res.error); return; }
+  render();
+};
+
+document.getElementById('app').innerHTML = render();
+</script>
+</body>
+</html>
