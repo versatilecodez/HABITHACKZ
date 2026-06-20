@@ -14,6 +14,8 @@ HQ.QUEST_TEMPLATES = {
     { id: 'medication-taken', icon: '💊', title: 'Take your medication', xp: 20, coins: 4, defaultFor: ['manage-diabetes', 'lower-bp'] }
   ],
   weekly: [
+    { id: 'complete-5-quests', icon: '✅', title: 'Complete 5 quests this week', xp: 150, coins: 25, defaultFor: [] },
+    { id: 'log-3-activities', icon: '📊', title: 'Log 3 activities this week', xp: 120, coins: 20, defaultFor: [] },
     { id: 'walk-50k', icon: '🎯', title: 'Walk 50,000 steps this week', xp: 200, coins: 30, defaultFor: ['walking', 'lose-weight'] },
     { id: 'workouts-3', icon: '💪', title: 'Complete 3 workouts this week', xp: 150, coins: 25, defaultFor: ['build-muscle', 'gym'] },
     { id: 'log-5-activities', icon: '📊', title: 'Log 5 activities this week', xp: 120, coins: 20, defaultFor: [] },
@@ -68,13 +70,16 @@ HQ.refreshQuestsForUser = function(userId) {
     }
   });
 
-  // Weekly quests: refresh weekly (every Monday)
+  // Weekly quests: always generate exactly 2 default weekly quests from day 1.
+  // These are universal defaults that apply to any goal. No daily-completion
+  // threshold is required, so the weekly tab is never empty for new users.
   const weekKey = HQ.weekKey();
-  const weeklyTemplates = HQ.QUEST_TEMPLATES.weekly.filter(t => t.defaultFor.some(g => matchSet.has(g)));
-  const fallbackWeekly = HQ.QUEST_TEMPLATES.weekly.filter(t => t.defaultFor.length === 0);
-  const selectedWeekly = [...weeklyTemplates.slice(0, 2), ...fallbackWeekly.slice(0, Math.max(0, 2 - weeklyTemplates.length))].slice(0, 2);
+  const defaultWeeklyIds = ['complete-5-quests', 'log-3-activities'];
+  const defaultWeeklyTemplates = defaultWeeklyIds
+    .map(id => HQ.QUEST_TEMPLATES.weekly.find(t => t.id === id))
+    .filter(Boolean);
 
-  selectedWeekly.forEach(t => {
+  defaultWeeklyTemplates.forEach(t => {
     const id = t.id + '-' + weekKey;
     if (!existingIds.has(id)) {
       quests.push({
