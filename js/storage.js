@@ -224,9 +224,12 @@ HQ.addCommunityPoints = function(user, amount) {
 };
 
 HQ.addToTownship = function(township, amount) {
-  const map = HQ.get(HQ.KEYS.COMMUNITY_POINTS, {});
-  map[township] = (map[township] || 0) + amount;
-  HQ.set(HQ.KEYS.COMMUNITY_POINTS, map);
+  const townships = this.get(this.KEYS.TOWNSHIPS, []);
+  const t = townships.find(x => x.name === township);
+  if (t) {
+    t.points = (t.points || 0) + amount;
+    this.set(this.KEYS.TOWNSHIPS, townships);
+  }
 };
 
 HQ.updateStreak = function(userId) {
@@ -291,6 +294,77 @@ HQ.logActivity = function(userId, activity) {
   this.addCommunityPoints(userId, Math.floor(xp / 10));
   this.updateStreak(userId);
   this.checkBadgeUnlocks(this.getUser(userId));
+
+  // Quest auto-completion: check active daily quests against this activity
+  const user = this.getUser(userId);
+  if (user && typeof this.getQuestsForUser === 'function') {
+    const today = this.todayKey();
+    const quests = this.getQuestsForUser(userId) || [];
+    quests.forEach(quest => {
+      if (!quest) return;
+      if (quest.type !== 'daily') return;
+      if (quest.completedDates && quest.completedDates.includes(today)) return;
+      if (!this._questMatchesActivity(quest, activity)) return;
+      this.completeQuest(userId, quest.id);
+    });
+  }
+
+  // Township auto-contribution: +5 points per activity logged
+  if (user && user.township) {
+    this.addToTownship(user.township, 5);
+  }
+};
+
+HQ._questMatchesActivity = function(quest, activity) {
+  if (!quest || !activity) return false;
+  const title = (quest.title || '').toLowerCase();
+  const type = (activity.type || '').toLowerCase();
+  const actName = (activity.name || '').toLowerCase();
+
+  const keywordMap = {
+    walk: ['walk', 'step'],
+    run: ['run', 'jog', 'jogging'],
+    soccer: ['soccer', 'football'],
+    gym: ['gym', 'workout', 'lift', 'strength'],
+    water: ['water', 'hydrate', 'drink'],
+    meditation: ['meditat', 'mindful', 'breath'],
+    sleep: ['sleep'],
+    meal: ['meal', 'eat', 'food'],
+    smoke: ['smoke', 'smok', 'cigarette', 'vape'],
+    medication: ['med', 'medication', 'pill']
+  };
+  const keywords = keywordMap[type] || (type ? [type] : []);
+  const haystack = title + ' ' + actName;
+  const keywordMatch = keywords.some(k => haystack.includes(k));
+  if (!keywordMatch) return false;
+
+  // Threshold check: parse "3km", "5,000 steps", "2L", "10 minutes" from title
+  const m = title.match(/(\d[\d,.]*)\s*(km|k\b|m\b|l\b|min|minute|step|hour)/);
+  if (m) {
+    const threshold = parseFloat(m[1].replace(/,/g, ''));
+    const unit = m[2];
+    if (unit.startsWith('km') || unit === 'k') {
+      const dist = parseFloat(activity.distance) || 0;
+      if (dist < threshold) return false;
+    } else if (unit === 'm' && !unit.startsWith('km')) {
+      const dist = (parseFloat(activity.distance) || 0) * 1000;
+      if (dist < threshold) return false;
+    } else if (unit === 'l') {
+      const vol = parseFloat(activity.amount) || parseFloat(activity.volume) || 0;
+      if (vol < threshold) return false;
+    } else if (unit === 'step') {
+      const steps = parseInt(activity.steps, 10) || 0;
+      if (steps < threshold) return false;
+    } else if (unit.startsWith('min')) {
+      const dur = parseFloat(activity.duration) || 0;
+      if (dur < threshold) return false;
+    } else if (unit === 'hour') {
+      const dur = parseFloat(activity.duration) || 0;
+      if (dur < threshold * 60) return false;
+    }
+  }
+
+  return true;
 };
 
 HQ.getActivities = function(userId) {
@@ -455,8 +529,8 @@ HQ.contribute = function(township, amount) {
 };
 
 HQ.contributeCommunityPoints = function(userId, amount) {
-  this.addToTownship(userId, amount || 10);
   const u = this.getUser(userId);
+  if (u && u.township) this.addToTownship(u.township, amount || 10);
   this.updateUser(userId, { lastCommunityContribute: Date.now() });
   return u;
 };
