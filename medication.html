@@ -6,6 +6,13 @@
 <meta name="theme-color" content="#4CAF50">
 <title>HealthQuest — Medication</title>
 <link rel="stylesheet" href="css/styles.css">
+<style>
+  .proof-thumb {
+    max-height: 60px;
+    border-radius: 6px;
+    object-fit: cover;
+  }
+</style>
 </head>
 <body>
 <div id="app"></div>
@@ -57,13 +64,28 @@ function render() {
       ${meds.length === 0 ? '<div class="card empty-state">No medications added yet.</div>' : ''}
       ${meds.map(m => {
         const logged = todaysLogs.some(l => l.medicationId === m.id);
+        if (logged) {
+          return `
+            <div class="card med-card">
+              <div class="med-info">
+                <div class="med-name">${m.name} ${m.dose ? '· ' + m.dose : ''}</div>
+                <div class="med-meta">${m.frequency} · Reminder ${m.time}</div>
+              </div>
+              <span class="badge badge-success">✅ Taken</span>
+              <button class="btn-small btn-danger" onclick="removeMed('${m.id}')">×</button>
+            </div>
+          `;
+        }
         return `
           <div class="card med-card">
             <div class="med-info">
               <div class="med-name">${m.name} ${m.dose ? '· ' + m.dose : ''}</div>
               <div class="med-meta">${m.frequency} · Reminder ${m.time}</div>
             </div>
-            ${logged ? '<span class="badge badge-success">✅ Taken</span>' : `<button class="btn-small btn-primary" onclick="verifyMed('${m.id}')">Mark Taken</button>`}
+            <div class="form-group" style="margin-top: 8px;">
+              <input type="file" accept="image/*" capture="environment" id="proof-${m.id}">
+            </div>
+            <button class="btn-small btn-primary" onclick="verifyMed('${m.id}')">Mark Taken</button>
             <button class="btn-small btn-danger" onclick="removeMed('${m.id}')">×</button>
           </div>
         `;
@@ -73,7 +95,11 @@ function render() {
       ${logs.length === 0 ? '<div class="card empty-state">No medication logs yet.</div>' : ''}
       ${logs.slice().reverse().slice(0, 5).map(l => `
         <div class="card proof-card">
-          <div class="proof-icon">${l.photoProof ? '📸' : '✅'}</div>
+          <div class="proof-icon">
+            ${l.photoProof
+              ? `<img class="proof-thumb" src="${l.photoProof}" alt="photo proof">`
+              : '✅'}
+          </div>
           <div class="proof-info">
             <div class="proof-title">${l.name} ${l.dose || ''}</div>
             <div class="proof-time">${new Date(l.takenAt).toLocaleString()}</div>
@@ -96,9 +122,27 @@ window.addMedication = function() {
 };
 
 window.verifyMed = function(medId) {
-  HQ.logMedication(user.id, medId);
-  alert('✅ Medication logged! +15 XP');
-  render();
+  const fileInput = document.getElementById('proof-' + medId);
+  const file = fileInput && fileInput.files && fileInput.files[0];
+
+  const submit = function(photoBase64) {
+    HQ.logMedication(user.id, medId, photoBase64 || null);
+    alert('✅ Medication logged! +15 XP');
+    render();
+  };
+
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      submit(e.target.result);
+    };
+    reader.onerror = function() {
+      submit(null);
+    };
+    reader.readAsDataURL(file);
+  } else {
+    submit(null);
+  }
 };
 
 window.removeMed = function(medId) {
